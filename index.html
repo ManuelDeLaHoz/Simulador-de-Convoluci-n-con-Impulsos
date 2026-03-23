@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador de Convolución</title>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary: #6366f1;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+        }
+
+        body { 
+            font-family: 'Inter', sans-serif; 
+            margin: 0; 
+            padding: 40px 20px;
+            background-color: var(--bg); 
+            color: var(--text);
+        }
+
+        .main-title {
+            text-align: center;
+            font-size: 1.8em;
+            margin-bottom: 40px;
+            color: var(--primary);
+        }
+
+        .container { 
+            display: flex; 
+            justify-content: center; 
+            gap: 24px; 
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .plot-card { 
+            background: var(--card); 
+            padding: 24px; 
+            border-radius: 16px; 
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); 
+            width: 32%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .formula-container { 
+            text-align: center; 
+            font-size: 1.1em; 
+            min-height: 60px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+
+        .controls { 
+            margin-top: auto;
+            padding-top: 20px;
+            border-top: 1px solid #f1f5f9;
+        }
+
+        label { font-weight: 600; font-size: 0.85em; color: #64748b; margin-bottom: 8px; display: block; }
+
+        select {
+            width: 100%;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+            margin-bottom: 16px;
+            outline: none;
+        }
+
+        .control-row { margin-bottom: 12px; }
+
+        input[type="range"] { 
+            width: 100%; 
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--primary);
+        }
+
+        .math-small { font-size: 0.9em; }
+    </style>
+</head>
+<body>
+
+    <div class="main-title" id="mainFormula">
+        \[ p(t) * \sum \delta(t - t_i) = \sum p(t - t_i) \]
+    </div>
+
+    <div class="container">
+        <div class="plot-card">
+            <div id="math-p" class="formula-container"></div>
+            <div id="plot1"></div>
+            <div class="controls">
+                <label>Forma del pulso:</label>
+                <select id="pulseType" onchange="updateAll()">
+                    <option value="rect">Rectangular (rect)</option>
+                    <option value="triang">Triangular (triang)</option>
+                </select>
+                <label>Ancho (a): <span id="valA">1.0</span></label>
+                <input type="range" id="sliderA" min="0.4" max="2.5" step="0.1" value="1" oninput="updateAll()">
+            </div>
+        </div>
+
+        <div class="plot-card">
+            <div id="math-delta" class="formula-container"></div>
+            <div id="plot2"></div>
+            <div class="controls">
+                <div class="control-row">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="en1" checked onchange="updateAll()">
+                        <span class="math-small">\( t_1 \)</span>
+                        <input type="range" id="t1" min="-4" max="4" step="0.2" value="-2" oninput="updateAll()">
+                    </div>
+                </div>
+                <div class="control-row">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="en2" onchange="updateAll()">
+                        <span class="math-small">\( t_2 \)</span>
+                        <input type="range" id="t2" min="-4" max="4" step="0.2" value="0" oninput="updateAll()">
+                    </div>
+                </div>
+                <div class="control-row">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="en3" onchange="updateAll()">
+                        <span class="math-small">\( t_3 \)</span>
+                        <input type="range" id="t3" min="-4" max="4" step="0.2" value="2" oninput="updateAll()">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="plot-card">
+            <div id="math-res" class="formula-container"></div>
+            <div id="plot3"></div>
+            <div class="controls" style="text-align: center; border:none; color: #94a3b8; font-size: 0.8em; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">
+                Resultado de la Convolución
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const T_DOMAIN = Array.from({length: 500}, (_, i) => -5 + i * 0.02);
+        const PLOT_CONFIG = { responsive: true, displayModeBar: false };
+        const LAYOUT_BASE = {
+            margin: {t:10, b:30, l:30, r:10},
+            height: 280,
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            xaxis: { range: [-5, 5], gridcolor: '#f1f5f9', zerolinecolor: '#cbd5e1' },
+            yaxis: { range: [-0.1, 1.3], gridcolor: '#f1f5f9', zerolinecolor: '#cbd5e1' }
+        };
+
+        function getPulse(t, type, a) {
+            if (type === 'rect') return Math.abs(t) <= a / 2 ? 1 : 0;
+            return Math.max(0, 1 - Math.abs(t / a));
+        }
+
+        function updateMath(id, tex) {
+            const el = document.getElementById(id);
+            el.innerHTML = `\\[ ${tex} \\]`;
+            MathJax.typesetPromise([el]);
+        }
+
+        function updateAll() {
+            const a = parseFloat(document.getElementById('sliderA').value);
+            const type = document.getElementById('pulseType').value;
+            document.getElementById('valA').innerText = a.toFixed(1);
+
+            const deltas = [
+                { en: document.getElementById('en1').checked, t: parseFloat(document.getElementById('t1').value), col: '#ef4444' },
+                { en: document.getElementById('en2').checked, t: parseFloat(document.getElementById('t2').value), col: '#10b981' },
+                { en: document.getElementById('en3').checked, t: parseFloat(document.getElementById('t3').value), col: '#f59e0b' }
+            ];
+
+            // Gráfico 1
+            const yPulse = T_DOMAIN.map(t => getPulse(t, type, a));
+            Plotly.newPlot('plot1', [{ x: T_DOMAIN, y: yPulse, fill: 'tozeroy', fillcolor: 'rgba(99, 102, 241, 0.1)', line: {color: '#6366f1', width: 3} }], LAYOUT_BASE, PLOT_CONFIG);
+            updateMath('math-p', type === 'rect' ? `p(t) = \\text{rect}\\left(\\frac{t}{${a}}\\right)` : `p(t) = \\Lambda\\left(\\frac{t}{${a}}\\right)`);
+
+            // Gráfico 2
+            const deltaTraces = deltas.filter(d => d.en).map(d => ({
+                x: [d.t, d.t], y: [0, 1], mode: 'lines+markers',
+                marker: { symbol: 'arrow-up', size: 12, color: d.col },
+                line: { color: d.col, width: 4 },
+                hoverinfo: 'none'
+            }));
+            Plotly.newPlot('plot2', deltaTraces.length ? deltaTraces : [{x:[0], y:[0], visible:false}], LAYOUT_BASE, PLOT_CONFIG);
+            
+            let texDelta = deltas.filter(d => d.en).map(d => `\\delta(t ${d.t < 0 ? '+' : '-'} ${Math.abs(d.t).toFixed(1)})`).join(' + ');
+            updateMath('math-delta', texDelta || '0');
+
+            // Gráfico 3
+            const yConv = T_DOMAIN.map(t => {
+                let sum = 0;
+                deltas.forEach(d => { if(d.en) sum += getPulse(t - d.t, type, a); });
+                return sum;
+            });
+            Plotly.newPlot('plot3', [{ x: T_DOMAIN, y: yConv, fill: 'tozeroy', fillcolor: 'rgba(168, 85, 247, 0.1)', line: {color: '#a855f7', width: 3} }], LAYOUT_BASE, PLOT_CONFIG);
+            updateMath('math-res', `p(t) * [${texDelta || '0'}]`);
+        }
+
+        // Inicializar
+        window.onload = updateAll;
+    </script>
+</body>
+</html>
